@@ -2,10 +2,21 @@
 
 package ac26
 
+import createdNavigatorItemId
+import error
+import io.ktor.client.call.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
 import io.ktor.util.*
 import io.ktor.utils.io.*
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
+import result
+import succeeded
 import java.util.*
 import kotlin.reflect.KProperty0
 
@@ -27,11 +38,13 @@ suspend fun ByteReadChannel.readText(): String = buildString {
     return toString()
 }
 
+
+
 fun command(command: String, block: (JsonBuilder.() -> Unit)? = null): String = runBlocking {
-    Archicad.client.post("http://localhost:19723") {
+    Archicad26.client.post("http://localhost:19723") {
         body = buildJson {
             if (block == null)
-            +"\"command\": \"API.$command\""
+                +"\"command\": \"API.$command\""
             else {
                 +"\"command\": \"API.$command\","
                 "parameters" {
@@ -87,12 +100,12 @@ class JsonBuilder {
         +"\"$this\": {"
         firstInScope.pop()
         firstInScope += false
-//        firstInScope += true
-//        val size = lastPositions.size
+        //        firstInScope += true
+        //        val size = lastPositions.size
         indent { block() }
         +'}'
-//        if (size != lastPositions.size) lastPositions.pop()
-//        firstInScope.pop()
+        //        if (size != lastPositions.size) lastPositions.pop()
+        //        firstInScope.pop()
         savePosition()
     }
 
@@ -110,8 +123,12 @@ class JsonBuilder {
                 firstInScope += false
                 savePosition()
             }
+            lastPositions.pop()
         }
         +']'
+        firstInScope.pop()
+        firstInScope += false
+        savePosition()
     }
 
     @JvmName("get0")
@@ -130,8 +147,12 @@ class JsonBuilder {
                 firstInScope += false
                 savePosition()
             }
+            lastPositions.pop()
         }
         +']'
+        firstInScope.pop()
+        firstInScope += false
+        savePosition()
     }
 
     operator fun String.get(elements: List<String>) {
@@ -146,9 +167,12 @@ class JsonBuilder {
                 firstInScope += false
                 savePosition()
             }
+            lastPositions.pop()
         }
         +']'
         firstInScope.pop()
+        firstInScope += false
+        savePosition()
     }
 
     infix fun String.`=`(any: Any) = `=`(any.toString(), false)
@@ -194,12 +218,23 @@ class JsonBuilder {
         savePosition()
     }
 
-    @JvmName("upN")
-    operator fun KProperty0<NavigatorItemId>.unaryPlus() {
+    @JvmName("upN?")
+    operator fun KProperty0<NavigatorItemId?>.unaryPlus() {
+        val guid = get()?.guid ?: return
         maybeComma()
         firstInScope.pop()
         firstInScope += false
-        name { +"\"guid\": \"${get().guid}\"" }
+        name { +"\"guid\": \"$guid\"" }
+        savePosition()
+    }
+
+    @JvmName("upN")
+    operator fun KProperty0<NavigatorItemId>.unaryPlus() {
+        val guid = get().guid
+        maybeComma()
+        firstInScope.pop()
+        firstInScope += false
+        name { +"\"guid\": \"$guid\"" }
         savePosition()
     }
 
@@ -210,3 +245,8 @@ class JsonBuilder {
 }
 
 typealias mm = Int
+
+@Serializable
+class ArchicadError(val code: Int, override val message: String): Exception(message){
+    override fun toString() = "$message ($code)"
+}

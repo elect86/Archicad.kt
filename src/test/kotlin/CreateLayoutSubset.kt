@@ -1,4 +1,4 @@
-import ac26.Archicad
+import ac26.Archicad26
 import ac26.NavigatorItemId
 import ac26.NumberingStyle
 import ac26.uuid
@@ -42,7 +42,7 @@ class CreateLayoutSubset {
 
     @Test
     fun run() {
-        val createdSubsetId = Archicad.createLayoutSubset {
+        val createdSubsetId = Archicad26.createLayoutSubset {
             parentNavigatorItemId = NavigatorItemId("ecd23f92-5d0b-4e20-ac21-1700403e565e".uuid)
             parameters {
                 name = "MySubset"

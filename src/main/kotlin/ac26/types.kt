@@ -1,15 +1,21 @@
+@file:UseSerializers(UuidSerializer::class)
+
 package ac26
 
 import java.util.*
-import Result
-import java.lang.StringBuilder
-import kotlin.reflect.KProperty0
+import Response
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.UseSerializers
+import java.time.LocalDate
 
 interface toJson {
     infix fun toJson(jsonBuilder: JsonBuilder)
 }
 
-data class AttributeFolder(val attributeType: AttributeType, val path: List<String> = emptyList()) : toJson {
+@Serializable
+data class AttributeFolder(val attributeType: AttributeType,
+                           val path: List<String> = emptyList()) : toJson {
     override fun toJson(jsonBuilder: JsonBuilder) {
         jsonBuilder.apply {
             "attributeType" `=` attributeType
@@ -21,87 +27,189 @@ data class AttributeFolder(val attributeType: AttributeType, val path: List<Stri
 operator fun AttributeType.plus(path: String) = plus(listOf(path))
 operator fun AttributeType.plus(path: List<String>) = AttributeFolder(this, path)
 
-typealias ExecutionResult = Result<Unit>
+typealias ExecutionResult = Response<Unit>
 typealias ExecutionResults = Array<ExecutionResult>
 
-internal val String.executionResults: Result<ExecutionResults>
+internal inline fun <R> String.listMap(list: String, map: (String) -> R): List<R> {
+    val padding = substringBefore("\"$list\": [\n").substringAfterLast('\n')
+    return substringAfter("\n$padding\"$list\": [\n$padding    {\n")
+        .substringBefore("\n$padding    }\n$padding]") // no trailing `\n`, there might be a comma
+        .split("\n$padding    },\n$padding    {\n")
+        .map(map)
+}
+
+internal val String.executionResults: Response<ExecutionResults>
     get() {
         val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
         if (!succeeded)
-            return Result.failure(this)
-        val results = substringAfter("\"executionResults\": [\n").substringBefore("\n        ]\n    }\n}")
-                .split("\n            },\n            {\n")
-                .map {
-                    when {
-                        "\"success\": true" in it -> Result.success(Unit)
-                        else -> Result.failure(it)
-                    }
-                }
-        return Result.success(results.toTypedArray())
+            return Response.failure(this)
+        val results = listMap("executionResults") {
+            when {
+                "\"success\": true" in it -> Response.success(Unit)
+                else -> Response.failure(it)
+            }
+        }
+        return Response.success(results.toTypedArray())
     }
 
-internal val String.commandResponse: Result<Pair<String, String>>
+internal val String.commandResponse: Response<Pair<String, String>>
     get() {
         val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
         if (!succeeded)
-            return Result.failure(this)
+            return Response.failure(this)
         val text = substringAfter("addOnCommandResponse\": {\n            \"")
         val key = text.substringBefore('"')
         val value = text.substringAfter("\": ").substringBefore("\n        }\n    }\n}").trim('"')
-        return Result.success(key to value)
+        return Response.success(key to value)
     }
 
-internal val String.boundingBoxes2D: Result<Array<Result<BoundingBoxes2D>>>
+internal val String.boundingBoxes2D: Response<Array<Response<BoundingBoxes2D>>>
     get() {
         val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
         if (!succeeded)
-            return Result.failure(this)
-        val boxes = substringAfter("boundingBoxes2D\": [\n            {\n")
-                .substringBefore("\n            }\n        ]\n    }\n}")
-                .split("\n            },\n            {\n")
-                .map {
-                    if ("error" in it)
-                        Result.failure(it)
-                    else
-                        Result.success(BoundingBoxes2D(it))
-                }
-        return Result.success(boxes.toTypedArray())
+            return Response.failure(this)
+        val boxes = listMap("boundingBoxes2D") {
+            if ("error" in it)
+                Response.failure(it)
+            else
+                Response.success(BoundingBoxes2D(it))
+        }
+        return Response.success(boxes.toTypedArray())
     }
 
-internal val String.boundingBoxes3D: Result<Array<Result<BoundingBoxes3D>>>
+internal val String.boundingBoxes3D: Response<Array<Response<BoundingBoxes3D>>>
     get() {
         val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
         if (!succeeded)
-            return Result.failure(this)
-        val boxes = substringAfter("boundingBoxes3D\": [\n            {\n")
-                .substringBefore("\n            }\n        ]\n    }\n}")
-                .split("\n            },\n            {\n")
-                .map {
-                    if ("error" in it)
-                        Result.failure(it)
-                    else
-                        Result.success(BoundingBoxes3D(it))
-                }
-        return Result.success(boxes.toTypedArray())
+            return Response.failure(this)
+        val boxes = listMap("boundingBoxes3D") {
+            if ("error" in it)
+                Response.failure(it)
+            else
+                Response.success(BoundingBoxes3D(it))
+        }
+        return Response.success(boxes.toTypedArray())
     }
 
-internal val String.activePenTables: Result<Pair<AttributeId, AttributeId>>
+internal val String.activePenTables: Response<Pair<AttributeId, AttributeId>>
     get() {
         val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
         if (!succeeded)
-            return Result.failure(this)
+            return Response.failure(this)
         val modelView = substringAfter("modelViewPenTableId\": {\n            \"attributeId\": {\n                \"guid\": \"")
-                .substringBefore('"')
+            .substringBefore('"')
         val layoutBook = substringAfter("layoutBookPenTableId\": {\n            \"attributeId\": {\n                \"guid\": \"")
-                .substringBefore('"')
-        return Result.success(AttributeId(modelView.uuid) to AttributeId(layoutBook.uuid))
+            .substringBefore('"')
+        return Response.success(AttributeId(modelView.uuid) to AttributeId(layoutBook.uuid))
     }
+
+internal val String.allClassificationSystems: Response<List<ClassificationSystem>>
+    get() {
+        val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
+        if (!succeeded)
+            return Response.failure(this)
+        val systems = listMap("classificationSystems") {
+            val guid = it.substringAfter("classificationSystemId\": {\n                    \"guid\": \"")
+                .substringBefore('"')
+            val name = it.substringAfter("},\n                \"name\": \"").substringBefore("\",\n")
+            val description = it.substringAfter("\",\n                \"description\": \"").substringBefore("\",\n")
+            val source = it.substringAfter("\",\n                \"source\": \"").substringBefore("\",\n")
+            val version = it.substringAfter("\",\n                \"version\": \"").substringBefore("\",\n")
+            val date = it.substringAfter("\",\n                \"date\": \"").substringBeforeLast('"')
+            ClassificationSystem(ClassificationSystemId(guid.uuid), name, description, source, version, LocalDate.parse(date))
+        }
+        return Response.success(systems)
+    }
+
+internal val String.allClassificationInSystems: Response<List<ClassificationItem>>
+    get() {
+        val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
+        if (!succeeded)
+            return Response.failure(this)
+        val items = listMap("classificationItems", ClassificationItem::invoke)
+        return Response.success(items)
+    }
+
+internal val String.allElements: Response<List<ElementId>>
+    get() {
+        val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
+        if (!succeeded)
+            return Response.failure(this)
+        val items = listMap("elements") { ElementId(it.substringAfter("guid\": \"").substringBefore('"').uuid) }
+        return Response.success(items)
+    }
+
+internal val String.allPropertyGroupIds: Response<List<PropertyGroupId>>
+    get() {
+        val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
+        if (!succeeded)
+            return Response.failure(this)
+        val items = listMap("propertyGroupIds") { PropertyGroupId(it.substringAfter("guid\": \"").substringBefore('"').uuid) }
+        return Response.success(items)
+    }
+
+internal val String.allPropertyIds: Response<List<PropertyId>>
+    get() {
+        val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
+        if (!succeeded)
+            return Response.failure(this)
+        val items = listMap("propertyIds") { PropertyId(it.substringAfter("guid\": \"").substringBefore('"').uuid) }
+        return Response.success(items)
+    }
+
+internal val String.allPropertyIdsOfElements: Response<List<Response<List<PropertyId>>>>
+    get() {
+        val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
+        if (!succeeded)
+            return Response.failure(this)
+        val items = listMap("propertyIdsOfElements") {
+            if ("\"error\": {" in it)
+                Response.failure(it)
+            else
+                Response.success(listMap("propertyIds") { id ->
+                    PropertyId(id.substringAfter("guid\": \"").substringBefore('"').uuid)
+                })
+        }
+        return Response.success(items)
+    }
+
+internal val String.allPropertyNames: Response<List<PropertyUserId>>
+    get() {
+        val succeeded = substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()
+        if (!succeeded)
+            return Response.failure(this)
+        val items = listMap("properties") {
+            if ("type\": \"BuiltIn\"," in it)
+                BuildInProperty(it.substringAfter("nonLocalizedName\": \"").substringBefore('"'))
+            else {
+                val (group, name) = substringAfter("localizedName\": [\n").substringBefore(']')
+                    .split(',').map { it.trim(' ', '"', '\n') }
+                UserDefinedInProperty(group, name)
+            }
+        }
+        return Response.success(items)
+    }
+
+sealed interface PropertyUserId {
+    val type: Type
+
+    enum class Type { BuiltIn, UserDefined }
+}
+
+data class BuildInProperty(val nonLocalizedName: String) : PropertyUserId {
+    override val type = PropertyUserId.Type.BuiltIn
+}
+
+data class UserDefinedInProperty(val group: String, val localizedName: String) : PropertyUserId {
+    override val type = PropertyUserId.Type.UserDefined
+}
 
 // we sacrifice inline class to use these in `vararg` arguments
 
 /*@JvmInline
 value*/ class AttributeId(override val guid: UUID) : Id {
     override fun equals(other: Any?) = other is AttributeId && guid == other.guid
+    override fun hashCode() = guid.hashCode()
 }
 
 /*@JvmInline
@@ -113,24 +221,27 @@ value class ClassificationSystemId(override val guid: UUID) : Id
 @JvmInline
 value class ClassificationItemId(override val guid: UUID) : Id
 
+@Serializable
 /*@JvmInline
 value*/ class NavigatorItemId(override val guid: UUID) : Id {
 
+    constructor(guid: String) : this(guid.uuid)
+
     /** CloneProjectMapItemToViewMap */
-    infix fun cloneTo(viewMap: NavigatorItemId): Result<NavigatorItemId> =
-        from(command("CloneProjectMapItemToViewMap") {
-            "projectMapNavigatorItemId" `=` this@NavigatorItemId
-            "parentNavigatorItemId" `=` viewMap
-        })
+    infix fun cloneTo(viewMap: NavigatorItemId): NavigatorItemId =
+        CloneProjectMapItemToViewMap(this, viewMap)()
+
+    override fun equals(other: Any?): Boolean = other is NavigatorItemId && guid == other.guid
+    override fun hashCode() = guid.hashCode()
 
     companion object {
-        infix fun from(response: String): Result<NavigatorItemId> =
+        infix fun from(response: String): Response<NavigatorItemId> =
             when (val succeeded = response.substringAfter("succeeded\": ").substringBefore(',').toBooleanStrict()) {
                 succeeded -> {
                     val guid = response.substringAfter("guid\": \"").substringBefore('"')
-                    Result(NavigatorItemId(guid.uuid))
+                    Response(NavigatorItemId(guid.uuid))
                 }
-                else -> Result.failure(response)
+                else -> Response.failure(response)
             }
     }
 }
@@ -142,11 +253,15 @@ value class PropertyId(override val guid: UUID) : Id
 value class PropertyGroupId(override val guid: UUID) : Id
 
 /*@JvmInline
-value*/ class ElementId(override val guid: UUID) : Id
+value*/ class ElementId(override val guid: UUID) : Id {
+    override fun equals(other: Any?) = other is ElementId && guid == other.guid
+    override fun hashCode() = guid.hashCode()
+}
 
 @JvmInline
 value class ComponentId(override val guid: UUID) : Id
 
+@Serializable
 data class Layout(val layoutName: String,
                   val masterNavigatorItemId: NavigatorItemId,
                   val parentNavigatorItemId: NavigatorItemId,
@@ -186,6 +301,7 @@ data class Layout(val layoutName: String,
         }
     }
 
+    @Serializable
     data class Parameters(val horizontalSize: mm,
                           val verticalSize: mm,
                           val leftMargin: Int,
@@ -304,8 +420,8 @@ data class LayoutSubset(val parentNavigatorItemId: NavigatorItemId,
 enum class NumberingStyle { Undefined, abc, ABC, `1`, `01`, `001`, `0001`, noID }
 
 data class ViewMapFolder(val folderName: String,
-                         val parentNavigatorItemId: NavigatorItemId,
-                         val previousNavigatorItemId: NavigatorItemId) {
+                         val parentNavigatorItemId: NavigatorItemId?,
+                         val previousNavigatorItemId: NavigatorItemId?) {
 
     fun print(json: JsonBuilder) = json.apply {
         "folderParameters" {
@@ -324,19 +440,14 @@ data class ViewMapFolder(val folderName: String,
     companion object {
         fun build(init: Builder.() -> Unit) = Builder().run {
             init()
-            ViewMapFolder(folderName, parentNavigatorItemId!!, previousNavigatorItemId!!)
+            ViewMapFolder(folderName, parentNavigatorItemId, previousNavigatorItemId)
         }
     }
 }
 
-class DeleteAttributeFolder(vararg attributeFolderIds: Any) {
-    @Suppress("UNCHECKED_CAST")
-    val attributeFolderIds = attributeFolderIds as Array<NavigatorItemId>
-}
-
-data class ExecuteAddOnCommand(val commandNamespace: String,
-                               val commandName: String,
-                               val parameters: List<Pair<String, String>>) {
+class ExecuteAddOnCommand(val commandNamespace: String,
+                          val commandName: String,
+                          val parameters: Array<out Pair<String, String>>) {
 
     fun print(json: JsonBuilder) = json.apply {
         "addOnCommandId" {
@@ -353,9 +464,9 @@ data class ExecuteAddOnCommand(val commandNamespace: String,
     class Builder {
         lateinit var commandNamespace: String
         lateinit var commandName: String
-        lateinit var parameters: List<Pair<String, String>>
+        var parameters: Array<out Pair<String, String>> = emptyArray()
         fun parameters(vararg args: Pair<String, String>) {
-            parameters = args.toList()
+            parameters = args
         }
     }
 
@@ -367,7 +478,7 @@ data class ExecuteAddOnCommand(val commandNamespace: String,
     }
 }
 
-data class Get2DBoundingBoxes(val elements: Array<out ElementId>) {
+class Get2DBoundingBoxes(val elements: Array<out ElementId>) {
     fun print(json: JsonBuilder) = json.apply { "elements"["elementId", elements] }
 }
 
@@ -380,7 +491,7 @@ data class BoundingBoxes2D(val xMin: Double, val yMin: Double,
                                        string.substringAfter("yMax\": ").substringBefore('\n').toDouble())
 }
 
-data class Get3DBoundingBoxes(val elements: Array<out ElementId>) {
+class Get3DBoundingBoxes(val elements: Array<out ElementId>) {
     fun print(json: JsonBuilder) = json.apply { "elements"["elementId", elements] }
 }
 
@@ -393,4 +504,32 @@ data class BoundingBoxes3D(val xMin: Double, val yMin: Double, val zMin: Double,
                                        string.substringAfter("xMax\": ").substringBefore(',').toDouble(),
                                        string.substringAfter("yMax\": ").substringBefore(',').toDouble(),
                                        string.substringAfter("zMax\": ").substringBefore('\n').toDouble())
+}
+
+data class ClassificationSystem(val classificationSystemId: ClassificationSystemId,
+                                val name: String,
+                                val description: String,
+                                val source: String,
+                                val version: String,
+                                val date: LocalDate)
+
+data class ClassificationItem(val classificationItemId: ClassificationItemId,
+                              val id: String,
+                              val name: String,
+                              val description: String,
+                              val children: List<ClassificationItem>) {
+
+    companion object {
+        operator fun invoke(text: String): ClassificationItem {
+            val guid = text.substringAfter("guid\": \"").substringBefore('"')
+            val id = text.substringAfter("\"id\": \"").substringBefore('"')
+            val name = text.substringAfter("name\": \"").substringBefore('"')
+            val description = text.substringAfter("description\": \"").substringBefore('"')
+            val children = when {
+                "\"children\": [\n" in text -> text.listMap("children", ClassificationItem::invoke)
+                else -> emptyList()
+            }
+            return ClassificationItem(ClassificationItemId(guid.uuid), id, name, description, children)
+        }
+    }
 }

@@ -32,7 +32,7 @@ class DeleteNavigatorItems {
 
     @Test
     fun run() {
-        val executionResults = Archicad.deleteNavigatorItems(NavigatorItemId("ba224ea8-d8c0-46d5-948a-f8b19ad1b3fb".uuid))
+        val executionResults = Archicad26.deleteNavigatorItems(NavigatorItemId("ba224ea8-d8c0-46d5-948a-f8b19ad1b3fb".uuid))
         assert(executionResults.isSuccess)
         assert(executionResults()[0].isSuccess)
     }

@@ -1,6 +1,12 @@
 @file:Suppress("UNCHECKED_CAST", "RedundantVisibilityModifier")
 @file:OptIn(ExperimentalContracts::class)
 
+import ac26.to
+import kotlinx.serialization.*
+import kotlinx.serialization.descriptors.buildClassSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.*
 import kotlin.contracts.*
 //import kotlin.internal.InlineOnly
 import kotlin.jvm.JvmField
@@ -8,53 +14,78 @@ import kotlin.jvm.JvmInline
 import kotlin.jvm.JvmName
 import java.io.Serializable
 
+internal fun JsonElement.obj(key: String): JsonElement = jsonObject[key]!!
+internal inline val JsonElement.succeeded get() = obj("succeeded").toString().toBooleanStrict()
+internal inline val JsonElement.success get() = obj("success").toString().toBooleanStrict()
+internal inline val JsonElement.result get() = obj("result")
+internal inline val JsonElement.error get() = obj("error")
+internal inline val JsonElement.createdNavigatorItemId get() = obj("createdNavigatorItemId")
+internal inline val JsonElement.executionResults get() = obj("executionResults").jsonArray
+
+class ResponseSerializer<T : Any>(val kSerializer: KSerializer<T>) : KSerializer<Response<T>> {
+
+    override val descriptor = buildClassSerialDescriptor("RespondSerializer", kSerializer.descriptor)
+    override fun serialize(encoder: Encoder, value: Response<T>): Unit = TODO()
+    override fun deserialize(decoder: Decoder): Response<T> {
+        decoder as JsonDecoder
+        fun JsonElement.decode() = decoder.json.decodeFromJsonElement(kSerializer, this)
+        val response = decoder.decodeJsonElement()
+        return when {
+            response.success -> Response(Unit)
+            else -> Response<T>(response.error.to<Response.Failure>())
+        }
+    }
+}
+
 /**
  * A discriminated union that encapsulates a successful outcome with a value of type [T]
  * or a failure with an arbitrary [Throwable] exception.
  */
 @SinceKotlin("1.3")
 @JvmInline
-public value class Result<out T>
+@kotlinx.serialization.Serializable(with = ResponseSerializer::class)
+public value class Response<out T : Any>
 @PublishedApi
 internal constructor(@PublishedApi
-                     internal val value: Any?) : Serializable {
+                     @Polymorphic
+                     internal val value: Any) : Serializable {
     // discovery
 
     /**
      * Returns `true` if this instance represents a successful outcome.
-     * In this case [isError] returns `false`.
+     * In this case [isFailure] returns `false`.
      */
     public val isSuccess: Boolean
-        get() = value !is Error
+        get() = value !is Failure
 
     /**
      * Returns `true` if this instance represents a failed outcome.
      * In this case [isSuccess] returns `false`.
      */
-    public val isError: Boolean
-        get() = value is Error
+    public val isFailure: Boolean
+        get() = value is Failure
 
     // value & exception retrieval
 
     /**
-     * Returns the encapsulated value if this instance represents [success][Result.isSuccess] or `null`
-     * if it is [failure][Result.isError].
+     * Returns the encapsulated value if this instance represents [success][Response.isSuccess] or `null`
+     * if it is [failure][Response.isFailure].
      *
      * This function is a shorthand for `getOrElse { null }` (see [getOrElse]) or
      * `fold(onSuccess = { it }, onFailure = { null })` (see [fold]).
      */
     //    @InlineOnly
     public inline fun getOrNull(): T? = when {
-        isError -> null
+        isFailure -> null
         else -> value as T
     }
 
     public inline operator fun invoke(): T = value as T
-    public inline val error: Error
-        get() = value as Error
+    public inline val failure: Failure
+        get() = value as Failure
 
     /**
-     * Returns the encapsulated [Throwable] exception if this instance represents [failure][isError] or `null`
+     * Returns the encapsulated [Throwable] exception if this instance represents [failure][isFailure] or `null`
      * if it is [success][isSuccess].
      *
      * This function is a shorthand for `fold(onSuccess = { null }, onFailure = { it })` (see [fold]).
@@ -65,19 +96,19 @@ internal constructor(@PublishedApi
     //    }
 
     /**
-     * Returns a string `Success(v)` if this instance represents [success][Result.isSuccess]
+     * Returns a string `Success(v)` if this instance represents [success][Response.isSuccess]
      * where `v` is a string representation of the value or a string `Failure(x)` if
-     * it is [failure][isError] where `x` is a string representation of the exception.
+     * it is [failure][isFailure] where `x` is a string representation of the exception.
      */
     public override fun toString(): String = when (value) {
-        is Error -> value.toString() // "Failure($exception)"
+        is Failure -> value.toString() // "Failure($exception)"
         else -> "Success($value)"
     }
 
     // companion with constructors
 
     /**
-     * Companion object for [Result] class that contains its constructor functions
+     * Companion object for [Response] class that contains its constructor functions
      * [success] and [failure].
      */
     public companion object {
@@ -86,24 +117,32 @@ internal constructor(@PublishedApi
          */
         @Suppress("INAPPLICABLE_JVM_NAME")
         @JvmName("success")
-        public inline fun <T> success(value: T): Result<T> = Result(value)
+        public inline fun <T : Any> success(value: T): Response<T> = Response(value)
 
         /**
-         * Returns an instance that encapsulates the given [Throwable] [error] as failure.
+         * Returns an instance that encapsulates the given [Throwable] [failure] as failure.
          */
         @Suppress("INAPPLICABLE_JVM_NAME")
         @JvmName("failure")
-        public inline fun <T> failure(string: String): Result<T> {
+        public inline fun <T : Any> failure(string: String): Response<T> {
             val code = string.substringAfter("code\": ").substringBefore(',').toInt()
-            val message = string.substringAfter("message\": \"").substringBefore("\"\n")
-            return Result(Error(code, message))
+            val message = string.substringAfter("message\": \"").substringBefore('"')
+            return Response(Failure(code, message))
         }
+
+        /**
+         * Returns an instance that encapsulates the given [Throwable] [failure] as failure.
+         */
+        @Suppress("INAPPLICABLE_JVM_NAME")
+        @JvmName("failure")
+        public inline fun <T : Any> failure(code: Int, message: String): Response<T> = Response(Failure(code, message))
     }
 
-    data class Error(@JvmField
-                     val code: Int,
-                     @JvmField
-                     val message: String) : Serializable {
+    @kotlinx.serialization.Serializable
+    data class Failure(@JvmField
+                       val code: Int,
+                       @JvmField
+                       val message: String) : Serializable {
         override fun toString(): String = "Error: $message ($code)"
     }
 }
@@ -189,14 +228,14 @@ internal constructor(@PublishedApi
 //}
 
 /**
- * Returns the encapsulated value if this instance represents [success][Result.isSuccess] or the
- * [defaultValue] if it is [failure][Result.isError].
+ * Returns the encapsulated value if this instance represents [success][Response.isSuccess] or the
+ * [defaultValue] if it is [failure][Response.isFailure].
  *
  * This function is a shorthand for `getOrElse { defaultValue }` (see [getOrElse]).
  */
 @SinceKotlin("1.3")
-public inline fun <R, T : R> Result<T>.getOrDefault(defaultValue: R): R {
-    if (isError) return defaultValue
+public inline fun <R, T : R> Response<T>.getOrDefault(defaultValue: R): R where R : Any {
+    if (isFailure) return defaultValue
     return value as T
 }
 
@@ -225,20 +264,20 @@ public inline fun <R, T : R> Result<T>.getOrDefault(defaultValue: R): R {
 
 /**
  * Returns the encapsulated result of the given [transform] function applied to the encapsulated value
- * if this instance represents [success][Result.isSuccess] or the
- * original encapsulated [Throwable] exception if it is [failure][Result.isError].
+ * if this instance represents [success][Response.isSuccess] or the
+ * original encapsulated [Throwable] exception if it is [failure][Response.isFailure].
  *
  * Note, that this function rethrows any [Throwable] exception thrown by [transform] function.
  * See [mapCatching] for an alternative that encapsulates exceptions.
  */
 @SinceKotlin("1.3")
-public inline fun <R, T> Result<T>.map(transform: (value: T) -> R): Result<R> {
+public inline fun <R : Any, T : Any> Response<T>.map(transform: (value: T) -> R): Response<R> {
     contract {
         callsInPlace(transform, InvocationKind.AT_MOST_ONCE)
     }
     return when {
-        isSuccess -> Result.success(transform(value as T))
-        else -> Result(value)
+        isSuccess -> Response.success(transform(value as T))
+        else -> Response(value)
     }
 }
 
@@ -310,11 +349,11 @@ public inline fun <R, T> Result<T>.map(transform: (value: T) -> R): Result<R> {
 //}
 
 /**
- * Performs the given [action] on the encapsulated value if this instance represents [success][Result.isSuccess].
+ * Performs the given [action] on the encapsulated value if this instance represents [success][Response.isSuccess].
  * Returns the original `Result` unchanged.
  */
 @SinceKotlin("1.3")
-public inline fun <T> Result<T>.onSuccess(action: (value: T) -> Unit): Result<T> {
+public inline fun <T : Any> Response<T>.onSuccess(action: (value: T) -> Unit): Response<T> {
     contract {
         callsInPlace(action, InvocationKind.AT_MOST_ONCE)
     }

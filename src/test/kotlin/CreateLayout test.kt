@@ -1,10 +1,10 @@
-import ac26.Archicad
+import ac26.Archicad26
 import ac26.NavigatorItemId
 import ac26.uuid
 import org.junit.jupiter.api.Test
 import kotlin.test.BeforeTest
 
-class CreateLayout {
+class `CreateLayout test` {
 
     val command = """|{
                      |    "command": "API.CreateLayout",
@@ -50,7 +50,7 @@ class CreateLayout {
 
     @Test
     fun run() {
-        val createdNavigatorItemId = Archicad.createLayout {
+        val createdNavigatorItemId = Archicad26.createLayout {
             name = "Luke"
             masterNavigatorItemId = NavigatorItemId("592becd1-1c86-4637-8fd1-6ed44d4c6251".uuid)
             parentNavigatorItemId = NavigatorItemId("ecd23f92-5d0b-4e20-ac21-1700403e565e".uuid)

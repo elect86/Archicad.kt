@@ -50,12 +50,12 @@ class Get3DBoundingBoxes {
 
     @Test
     fun run() {
-        val executionResults = Archicad.get3dBoundingBoxes(ElementId("0f7943ac-48fa-c74e-8ace-d1cb0db0dbb7".uuid),
-                                                           ElementId("00000000-1111-2222-3333-444444444444".uuid))
+        val executionResults = Archicad26.get3dBoundingBoxes(ElementId("0f7943ac-48fa-c74e-8ace-d1cb0db0dbb7".uuid),
+                                                             ElementId("00000000-1111-2222-3333-444444444444".uuid))
         assert(executionResults.isSuccess)
         assert(executionResults()[0].isSuccess)
         assert(executionResults()[0]() == BoundingBoxes3D(3.3, 2.2, 4.2, 3.3, 2.2, 6.5))
-        assert(executionResults()[1].isError)
-        assert(executionResults()[1].error == Result.Error(7204, "The element does not exist."))
+        assert(executionResults()[1].isFailure)
+        assert(executionResults()[1].failure == Response.Failure(7204, "The element does not exist."))
     }
 }

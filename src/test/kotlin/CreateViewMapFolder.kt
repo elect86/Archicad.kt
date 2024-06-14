@@ -1,4 +1,4 @@
-import ac26.Archicad
+import ac26.Archicad26
 import ac26.NavigatorItemId
 import ac26.uuid
 import org.junit.jupiter.api.Test
@@ -34,7 +34,7 @@ class CreateViewMapFolder {
 
     @Test
     fun run() {
-        val createdFolderNavigatorItemId = Archicad.createViewMapFolder {
+        val createdFolderNavigatorItemId = Archicad26.createViewMapFolder {
             folderName = "Test Folder"
             parentNavigatorItemId = NavigatorItemId("df27178e-67e0-4d70-83aa-d0e8d4530440".uuid)
             previousNavigatorItemId = NavigatorItemId("14807f55-fd6c-41ea-a6c6-160e57eed613".uuid)

@@ -30,7 +30,7 @@ class ExecuteAddOnCommand {
 
     @Test
     fun run() {
-        val executionResults = Archicad.executeAddOnCommand {
+        val executionResults = Archicad26.executeAddOnCommand {
             commandNamespace = "MyAddOnCommandNamespace"
             commandName = "MyAddOnCommandName"
             parameters("myAddOnCommandParameter1" to "X=?")

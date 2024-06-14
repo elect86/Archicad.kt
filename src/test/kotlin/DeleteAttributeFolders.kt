@@ -1,4 +1,4 @@
-import ac26.Archicad
+import ac26.Archicad26
 import ac26.AttributeFolderId
 import ac26.uuid
 import org.junit.jupiter.api.Test
@@ -54,12 +54,12 @@ class DeleteAttributeFolders {
 
     @Test
     fun run() {
-        val executionResults = Archicad.deleteAttributeFolders(AttributeFolderId("131a53c0-3266-4c84-b77f-85aa0df6e9ba".uuid),
-                                                               AttributeFolderId("b470082a-9187-48e1-acfd-00000bad0000".uuid),
-                                                               AttributeFolderId("b470082a-9187-48e1-acfd-80598f750d75".uuid))
+        val executionResults = Archicad26.deleteAttributeFolders(AttributeFolderId("131a53c0-3266-4c84-b77f-85aa0df6e9ba".uuid),
+                                                                 AttributeFolderId("b470082a-9187-48e1-acfd-00000bad0000".uuid),
+                                                                 AttributeFolderId("b470082a-9187-48e1-acfd-80598f750d75".uuid))
         assert(executionResults.isSuccess)
         assert(executionResults()[0].isSuccess)
-        assert(executionResults()[1].error == Result.Error(6108, "Attribute folder not found: \\\"b470082a-9187-48e1-acfd-00000bad0000\\\"."))
+        assert(executionResults()[1].failure == Response.Failure(6108, "Attribute folder not found: \\\"b470082a-9187-48e1-acfd-00000bad0000\\\"."))
         assert(executionResults()[2].isSuccess)
     }
 }

@@ -1,4 +1,4 @@
-import ac26.Archicad
+import ac26.Archicad26
 import ac26.AttributeType
 import ac26.plus
 import org.junit.jupiter.api.Test
@@ -62,13 +62,12 @@ class CreateAttributeFolders {
 
     @Test
     fun run() {
-        val results = Archicad.createAttributeFolders(AttributeType.Surface + "  InvalidPath ",
-                                                      AttributeType.Surface + "ValidPath",
-                                                      AttributeType.ZoneCategory + listOf("A", "AA"))
-        assert(results.isSuccess)
-        assert(results().size == 3)
-        assert(results()[0].error == Result.Error(6107, "Illegal attribute folder name: \\\"  InvalidPath \\\"."))
-        assert(results()[1].isSuccess)
-        assert(results()[2].error == Result.Error(6110, "Folder operations not enabled for attribute type \\\"Lines\\\""))
+        val results = Archicad26.createAttributeFolders(AttributeType.Surface + "  InvalidPath ",
+                                                        AttributeType.Surface + "ValidPath",
+                                                        AttributeType.ZoneCategory + listOf("A", "AA"))
+        assert(results.size == 3)
+        assert(results[0].failure == Response.Failure(6107, "Illegal attribute folder name: \"  InvalidPath \"."))
+        assert(results[1].isSuccess)
+        assert(results[2].failure == Response.Failure(6110, "Folder operations not enabled for attribute type \"Lines\""))
     }
 }
